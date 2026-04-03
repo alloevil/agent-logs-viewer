@@ -335,6 +335,98 @@
       font-size: 13px;
     }
 
+    /* Spawn Tree */
+    .spawn-tree-section {
+      margin-top: 16px;
+      padding-top: 12px;
+      border-top: 1px solid var(--border);
+    }
+    .spawn-tree-section h3 {
+      font-size: 13px;
+      color: var(--muted);
+      margin: 0 0 10px;
+      font-weight: 500;
+    }
+    .spawn-tree {
+      font-size: 12px;
+      line-height: 1.6;
+    }
+    .spawn-tree-node {
+      position: relative;
+      padding-left: 20px;
+      margin-left: 8px;
+    }
+    .spawn-tree-node::before {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 1px;
+      background: var(--border);
+    }
+    .spawn-tree-node::after {
+      content: '';
+      position: absolute;
+      left: 0;
+      top: 11px;
+      width: 14px;
+      height: 1px;
+      background: var(--border);
+    }
+    .spawn-tree-node:last-child::before {
+      bottom: calc(100% - 12px);
+    }
+    .spawn-tree-root {
+      padding-left: 0;
+      margin-left: 0;
+    }
+    .spawn-tree-root::before,
+    .spawn-tree-root::after {
+      display: none;
+    }
+    .spawn-tree-label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 8px;
+      border-radius: 4px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .spawn-tree-label:hover {
+      background: rgba(255,255,255,0.08);
+    }
+    .spawn-tree-label.current {
+      background: rgba(59,130,246,0.15);
+      border: 1px solid rgba(59,130,246,0.3);
+    }
+    .spawn-tree-label .st-agent {
+      color: var(--accent);
+      font-weight: 500;
+    }
+    .spawn-tree-label .st-id {
+      color: var(--muted);
+      font-family: var(--mono);
+      font-size: 11px;
+    }
+    .spawn-tree-label .st-task {
+      color: var(--muted);
+      font-size: 11px;
+      max-width: 200px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .spawn-tree-label .st-icon {
+      font-size: 14px;
+    }
+    .spawn-tree-empty {
+      color: var(--muted);
+      font-size: 12px;
+      font-style: italic;
+    }
+
     .badge {
       display: inline-flex;
       align-items: center;
@@ -1982,6 +2074,7 @@
             <div class="summary-section-title">Tokens</div>
             <div class="token-grid">${tokenBadges}</div>
           </div>
+          ${spawnCount ? '<div id="spawnTreeContainer" class="spawn-tree-section"><h3>🌳 Spawn Tree</h3><div class="spawn-tree">Loading...</div></div>' : ''}
         </div>
       `;
 
@@ -2013,6 +2106,105 @@
           }
         });
       });
+
+      // Render spawn tree if spawns exist
+      if (spawnCount && state.spawnMap.length) {
+        renderSpawnTree();
+      }
+    }
+
+    function renderSpawnTree() {
+      const container = document.getElementById('spawnTreeContainer');
+      if (!container) return;
+      const treeDiv = container.querySelector('.spawn-tree');
+      if (!treeDiv) return;
+
+      const currentSession = state.selectedSessionId || state.sessionData?.session?.id;
+      const currentAgent = state.selectedAgent;
+      const rootKey = currentAgent + '/' + currentSession;
+
+      // Build adjacency from spawnMap
+      const childrenOf = {}; // "agent/session" -> [{agent, sessionId, task, isExecSpawn, timestamp}]
+      for (const link of state.spawnMap) {
+        const pKey = link.parentAgent + '/' + link.parentSession;
+        if (!childrenOf[pKey]) childrenOf[pKey] = [];
+        childrenOf[pKey].push({
+          agent: link.childAgent,
+          task: link.task || '',
+          timestamp: link.timestamp,
+          isExecSpawn: !!link.isExecSpawn
+        });
+      }
+
+      // Check if this session has any spawn children
+      const myChildren = childrenOf[rootKey] || [];
+      if (!myChildren.length) {
+        treeDiv.innerHTML = '<div class="spawn-tree-empty">This session has spawn calls but child sessions could not be mapped.</div>';
+        return;
+      }
+
+      function renderNode(agent, sessionId, task, isCurrent, isRoot, kids) {
+        const shortId = sessionId ? (sessionId.length > 12 ? sessionId.slice(0, 8) : sessionId) : '';
+        const cls = isRoot ? 'spawn-tree-root' : 'spawn-tree-node';
+        let html = `<div class="${cls}">`;
+        html += `<div class="spawn-tree-label${isCurrent ? ' current' : ''}" data-nav-agent="${escapeHtml(agent)}" data-nav-session="${escapeHtml(sessionId || '')}">`;
+        html += `<span class="st-icon">${isRoot ? '\ud83c\udf33' : '\ud83d\udd17'}</span>`;
+        html += `<span class="st-agent">${escapeHtml(agent)}</span>`;
+        if (shortId) html += `<span class="st-id">${escapeHtml(shortId)}</span>`;
+        if (task && !isRoot) html += `<span class="st-task" title="${escapeHtml(task)}">${escapeHtml(task.slice(0, 60))}${task.length > 60 ? '\u2026' : ''}</span>`;
+        html += `</div>`;
+        for (const kid of kids) {
+          const kidKey = kid.agent + '/' + (kid.sessionId || '');
+          const grandkids = kid.sessionId ? (childrenOf[kidKey] || []) : [];
+          html += renderNode(kid.agent, kid.sessionId || null, kid.task, false, false, grandkids);
+        }
+        html += `</div>`;
+        return html;
+      }
+
+      treeDiv.innerHTML = renderNode(currentAgent, currentSession, '', true, true, myChildren);
+
+      // Bind click navigation
+      treeDiv.querySelectorAll('.spawn-tree-label[data-nav-agent]').forEach(el => {
+        el.addEventListener('click', () => {
+          const agent = el.dataset.navAgent;
+          const sid = el.dataset.navSession;
+          if (!sid) return;
+          if (agent === currentAgent && sid === currentSession) return;
+          navigateToSpawnSession(agent, sid);
+        });
+      });
+    }
+
+    function navigateToSpawnSession(agent, sessionId) {
+      // Push current to breadcrumb
+      state.breadcrumb.push({ agent: state.selectedAgent, sessionId: state.selectedSessionId, file: state.sessionFile });
+
+      if (agent !== state.selectedAgent) {
+        // Different agent: select it, then load session
+        const agentSelect = document.querySelector('.agent-select');
+        if (agentSelect) {
+          state.selectedAgent = agent;
+          agentSelect.value = agent;
+        }
+        loadSessions(false).then(() => {
+          const found = state.filteredSessions.find(s => s.id === sessionId);
+          if (found) {
+            state.selectedSessionId = found.id;
+            state.sessionFile = found.file;
+            renderSessions();
+            loadSession();
+          }
+        });
+      } else {
+        const found = state.filteredSessions.find(s => s.id === sessionId);
+        if (found) {
+          state.selectedSessionId = found.id;
+          state.sessionFile = found.file;
+          renderSessions();
+          loadSession();
+        }
+      }
     }
 
     function renderMessages() {
@@ -2490,6 +2682,16 @@
       }
       state.sessionData = payload;
       state.visibleUnitCount = MSG_BATCH_SIZE; // reset pagination on session switch
+
+      // Load spawn map for tree visualization (only for OpenClaw)
+      if (state.platform === 'openclaw') {
+        try {
+          state.spawnMap = await fetchJson('/api/spawn-map' + dp);
+        } catch { state.spawnMap = []; }
+      } else {
+        state.spawnMap = [];
+      }
+
       renderSummary();
       renderMessages();
       loading.hidden = true;
