@@ -858,6 +858,7 @@
     .session-item .stat-chip.user { color: #58a6ff; background: rgba(31, 111, 235, 0.1); }
     .session-item .stat-chip.tool { color: #d29922; background: rgba(210, 153, 34, 0.1); }
     .session-item .stat-chip.spawn { color: #f0883e; background: rgba(240, 136, 62, 0.12); }
+    .session-item .stat-chip.duration { color: #8b949e; background: rgba(139, 148, 158, 0.1); }
 
     .session-anchor {
       scroll-margin-top: 16px;
@@ -1461,6 +1462,13 @@
         if (session.assistantCount) chips.push(`<span class="stat-chip">🤖 ${session.assistantCount}</span>`);
         if (session.toolCallCount) chips.push(`<span class="stat-chip tool">🔧 ${session.toolCallCount}</span>`);
         if (session.spawnCount) chips.push(`<span class="stat-chip spawn">🔗 ${session.spawnCount} spawn</span>`);
+        // Duration from first to last message
+        const startMs = parseTimestampMs(session.timestamp);
+        const endMs = parseTimestampMs(session.lastActivity);
+        if (startMs && endMs && endMs > startMs) {
+          const dur = endMs - startMs;
+          if (dur >= 5000) chips.push(`<span class="stat-chip duration">⏱ ${formatDurationCompact(dur)}</span>`);
+        }
         return `
           <div class="session-item ${activeClass}" data-session-id="${escapeHtml(session.id)}" tabindex="0">
             <div class="top">
