@@ -274,6 +274,67 @@
       opacity: 0.75;
     }
 
+    .search-results {
+      padding: 8px;
+    }
+    .search-results .search-header {
+      font-size: 12px;
+      color: var(--muted);
+      padding: 4px 8px 8px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .search-results .search-close {
+      cursor: pointer;
+      color: var(--accent);
+      font-size: 12px;
+      background: none;
+      border: none;
+      padding: 2px 6px;
+    }
+    .search-results .search-close:hover { text-decoration: underline; }
+    .search-result-item {
+      padding: 8px 10px;
+      border-radius: 6px;
+      cursor: pointer;
+      margin-bottom: 4px;
+      background: rgba(255,255,255,0.03);
+      border: 1px solid transparent;
+    }
+    .search-result-item:hover {
+      background: rgba(255,255,255,0.07);
+      border-color: var(--accent);
+    }
+    .search-result-item .sr-session {
+      font-size: 11px;
+      font-family: var(--mono);
+      color: var(--muted);
+      margin-bottom: 4px;
+    }
+    .search-result-item .sr-match {
+      font-size: 12px;
+      color: var(--fg);
+      line-height: 1.4;
+    }
+    .search-result-item .sr-match mark {
+      background: rgba(59,130,246,0.3);
+      color: var(--fg);
+      padding: 1px 2px;
+      border-radius: 2px;
+    }
+    .search-result-item .sr-role {
+      font-size: 10px;
+      color: var(--muted);
+      text-transform: uppercase;
+    }
+    .search-spinner {
+      text-align: center;
+      padding: 20px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+
     .badge {
       display: inline-flex;
       align-items: center;
@@ -1136,12 +1197,13 @@
           <button class="settings-btn" id="settingsBtn" title="Settings">⚙</button>
         </div>
         <div id="agentNav" class="agent-nav" hidden></div>
-        <input id="sessionSearch" class="control" type="search" placeholder="Filter sessions">
+        <input id="sessionSearch" class="control" type="search" placeholder="Filter / Enter to search content">
         <div class="toggle-row">
           <label class="toggle" id="archivedToggle"><span>Include archived</span><input id="includeArchived" type="checkbox"></label>
           <label class="toggle"><span>Auto-refresh</span><input id="autoRefresh" type="checkbox" checked></label>
           <label class="toggle"><span>Auto-scroll</span><input id="autoScroll" type="checkbox"></label>
         </div>
+        <div id="searchResults" class="search-results" hidden></div>
         <div id="sessionList" class="session-list"></div>
       </aside>
       <main class="main">
@@ -1210,6 +1272,7 @@
 
     const platformBar = document.getElementById('platformBar');
     const sessionSearch = document.getElementById('sessionSearch');
+    const searchResults = document.getElementById('searchResults');
     const includeArchived = document.getElementById('includeArchived');
     const autoRefresh = document.getElementById('autoRefresh');
     const autoScroll = document.getElementById('autoScroll');
@@ -2471,8 +2534,90 @@
 
 
     sessionSearch.addEventListener('input', () => {
+      if (!sessionSearch.value.trim()) closeSearchResults();
       renderSessions();
     });
+
+    sessionSearch.addEventListener('keydown', async (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        const q = sessionSearch.value.trim();
+        if (!q) return;
+        await performFullTextSearch(q);
+      }
+    });
+
+    function closeSearchResults() {
+      searchResults.hidden = true;
+      searchResults.innerHTML = '';
+      sessionList.style.display = '';
+    }
+
+    async function performFullTextSearch(q) {
+      searchResults.hidden = false;
+      searchResults.innerHTML = '<div class="search-spinner">🔍 Searching…</div>';
+      sessionList.style.display = 'none';
+
+      try {
+        const params = new URLSearchParams({ q, platform: state.platform });
+        if (state.platform === 'openclaw' && state.agent) params.set('agent', state.agent);
+        const res = await fetch(`/api/search?${params}`);
+        const results = await res.json();
+
+        if (!results.length) {
+          searchResults.innerHTML = `
+            <div class="search-header">
+              <span>No results for "${escapeHtml(q)}"</span>
+              <button class="search-close" onclick="closeSearchResults(); sessionSearch.value=''">✕ Close</button>
+            </div>`;
+          return;
+        }
+
+        let html = `
+          <div class="search-header">
+            <span>🔍 ${results.length} session(s) match "${escapeHtml(q)}"</span>
+            <button class="search-close" onclick="closeSearchResults(); sessionSearch.value=''">✕ Close</button>
+          </div>`;
+
+        for (const r of results) {
+          const shortId = r.sessionId.length > 20 ? r.sessionId.slice(0, 8) + '\u2026' : r.sessionId;
+          for (const m of r.matches) {
+            // Highlight the query in snippet
+            const escaped = escapeHtml(m.snippet);
+            const re = new RegExp('(' + q.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+            const highlighted = escaped.replace(re, '<mark>$1</mark>');
+            html += `
+              <div class="search-result-item" data-session-id="${escapeHtml(r.sessionId)}" data-file="${escapeHtml(r.file)}">
+                <div class="sr-session">${escapeHtml(shortId)} <span class="sr-role">${escapeHtml(m.role)}</span></div>
+                <div class="sr-match">${highlighted}</div>
+              </div>`;
+          }
+        }
+
+        searchResults.innerHTML = html;
+
+        searchResults.querySelectorAll('.search-result-item').forEach(el => {
+          el.addEventListener('click', () => {
+            const sid = el.dataset.sessionId;
+            closeSearchResults();
+            sessionSearch.value = '';
+            // Find and click the session in the list
+            const found = state.filteredSessions.find(s => s.id === sid);
+            if (found) {
+              state.sessionId = found.id;
+              state.sessionFile = found.file;
+              renderSessions();
+              loadSession();
+            }
+          });
+        });
+      } catch (err) {
+        searchResults.innerHTML = `<div class="search-header"><span>Search error: ${escapeHtml(err.message)}</span>
+          <button class="search-close" onclick="closeSearchResults()">✕ Close</button></div>`;
+      }
+    }
+    // Make closeSearchResults available from inline onclick
+    window.closeSearchResults = closeSearchResults;
 
     includeArchived.addEventListener('change', async () => {
       state.includeArchived = includeArchived.checked;

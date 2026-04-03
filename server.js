@@ -277,6 +277,103 @@ app.get('/api/agents', async (req, res) => {
   }
 });
 
+// Full-text search across sessions
+app.get('/api/search', async (req, res) => {
+  try {
+    const q = (req.query.q || '').trim().toLowerCase();
+    const platform = req.query.platform || 'openclaw';
+    const agent = req.query.agent || '';
+    const maxResults = Math.min(parseInt(req.query.limit) || 50, 100);
+    if (!q) return res.json([]);
+
+    let sessionFiles = [];
+
+    if (platform === 'openclaw' && agent) {
+      const dir = resolveDir(req.query.dir, DATA_DIR);
+      const agentDir = path.join(dir, agent, 'sessions');
+      try {
+        const entries = await fsp.readdir(agentDir);
+        sessionFiles = entries
+          .filter(f => f.endsWith('.jsonl') && !isArchivedFile(f))
+          .map(f => ({ path: path.join(agentDir, f), file: f, platform: 'openclaw' }));
+      } catch { /* no sessions */ }
+    } else if (platform === 'codex') {
+      const dir = resolveDir(req.query.dir, CODEX_DIR);
+      try {
+        const entries = await fsp.readdir(dir, { withFileTypes: true });
+        for (const e of entries) {
+          if (!e.isDirectory()) continue;
+          const jsonlPath = path.join(dir, e.name, 'conversation.jsonl');
+          try { await fsp.access(jsonlPath); sessionFiles.push({ path: jsonlPath, file: e.name, platform: 'codex' }); } catch {}
+        }
+      } catch {}
+    } else if (platform === 'claude-code') {
+      const dir = resolveDir(req.query.dir, CLAUDE_CODE_DIR);
+      try {
+        const entries = await fsp.readdir(dir);
+        sessionFiles = entries
+          .filter(f => f.endsWith('.jsonl'))
+          .map(f => ({ path: path.join(dir, f), file: f, platform: 'claude-code' }));
+      } catch {}
+    }
+
+    const results = [];
+
+    for (const sf of sessionFiles) {
+      if (results.length >= maxResults) break;
+      const matches = [];
+      const stream = fs.createReadStream(sf.path, { encoding: 'utf8' });
+      const rl = readline.createInterface({ input: stream, crlfDelay: Infinity });
+      let sessionId = sf.file.split('.jsonl')[0];
+
+      try {
+        for await (const line of rl) {
+          if (matches.length >= 3) break; // max 3 matches per session
+          if (!line.includes(q) && !line.toLowerCase().includes(q)) continue;
+          let rec;
+          try { rec = JSON.parse(line); } catch { continue; }
+
+          // Extract session id
+          if (rec.type === 'session' && rec.id) sessionId = rec.id;
+          if (rec.payload?.id && !sessionId) sessionId = rec.payload.id;
+          if (rec.sessionId) sessionId = rec.sessionId;
+
+          // Extract text content for matching
+          let text = '';
+          let role = '';
+          const msg = rec.message || rec.payload || {};
+          role = msg.role || rec.type || '';
+          const content = Array.isArray(msg.content) ? msg.content : (typeof msg.content === 'string' ? [{ type: 'text', text: msg.content }] : []);
+          text = content
+            .filter(c => c.type === 'text' || c.type === 'input_text')
+            .map(c => c.text || '')
+            .join(' ');
+
+          if (text.toLowerCase().includes(q)) {
+            // Extract snippet around match
+            const idx = text.toLowerCase().indexOf(q);
+            const start = Math.max(0, idx - 40);
+            const end = Math.min(text.length, idx + q.length + 60);
+            const snippet = (start > 0 ? '\u2026' : '') + text.slice(start, end) + (end < text.length ? '\u2026' : '');
+            matches.push({ role, snippet, timestamp: rec.timestamp || null });
+          }
+        }
+      } finally {
+        rl.close();
+        stream.destroy();
+      }
+
+      if (matches.length > 0) {
+        results.push({ sessionId, file: sf.file, platform: sf.platform, matches });
+      }
+    }
+
+    res.json(results);
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 app.get('/api/agents/:name/sessions', async (req, res) => {
   const agentName = sanitizeAgentName(req.params.name);
   if (!agentName) {
