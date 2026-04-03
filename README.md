@@ -2,6 +2,8 @@
 
 Web dashboard for viewing AI agent session logs. Supports **OpenClaw**, **Codex**, and **Claude Code** — all in one interface.
 
+English | [中文](README.zh-CN.md)
+
 ## Features
 
 - **Multi-platform** — Unified view across OpenClaw, Codex, and Claude Code sessions
