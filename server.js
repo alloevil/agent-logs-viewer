@@ -824,9 +824,9 @@ async function parseClaudeCodeSessionMetadata(filePath, fileName) {
       if (t === 'user') {
         messageCount++;
         userCount++;
+        const content = rec.message?.content;
         // Extract first user message text
         if (!firstUserMessage) {
-          const content = rec.message?.content;
           if (typeof content === 'string' && content.trim()) {
             firstUserMessage = content.trim().slice(0, 120);
           } else if (Array.isArray(content)) {
@@ -835,7 +835,6 @@ async function parseClaudeCodeSessionMetadata(filePath, fileName) {
           }
         }
         // Check if this user message contains tool_result blocks
-        const content = rec.message?.content;
         if (Array.isArray(content)) {
           for (const block of content) {
             if (block.type === 'tool_result') toolResultCount++;
