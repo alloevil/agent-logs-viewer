@@ -2560,7 +2560,13 @@
 
       try {
         const params = new URLSearchParams({ q, platform: state.platform });
-        if (state.platform === 'openclaw' && state.agent) params.set('agent', state.agent);
+        if (state.platform === 'openclaw' && state.selectedAgent) params.set('agent', state.selectedAgent);
+        // Pass custom dir if configured
+        let dir = '';
+        if (state.platform === 'openclaw') dir = state.settings.openclawDir;
+        else if (state.platform === 'codex') dir = state.settings.codexDir;
+        else if (state.platform === 'claude-code') dir = state.settings.claudeCodeDir;
+        if (dir) params.set('dir', dir);
         const res = await fetch(`/api/search?${params}`);
         const results = await res.json();
 
