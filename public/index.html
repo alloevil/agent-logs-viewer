@@ -337,24 +337,30 @@
 
     /* Spawn Tree */
     .spawn-tree-section {
-      margin-top: 16px;
+      margin-top: 14px;
       padding-top: 12px;
       border-top: 1px solid var(--border);
+      width: 100%;
+      flex-basis: 100%;
     }
     .spawn-tree-section h3 {
-      font-size: 13px;
+      font-size: 11px;
       color: var(--muted);
-      margin: 0 0 10px;
-      font-weight: 500;
+      margin: 0 0 8px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
     }
     .spawn-tree {
       font-size: 12px;
-      line-height: 1.6;
+      line-height: 1.5;
+      max-height: 260px;
+      overflow-y: auto;
     }
     .spawn-tree-node {
       position: relative;
-      padding-left: 20px;
-      margin-left: 8px;
+      padding-left: 18px;
+      margin-left: 6px;
     }
     .spawn-tree-node::before {
       content: '';
@@ -369,13 +375,13 @@
       content: '';
       position: absolute;
       left: 0;
-      top: 11px;
-      width: 14px;
+      top: 12px;
+      width: 12px;
       height: 1px;
       background: var(--border);
     }
     .spawn-tree-node:last-child::before {
-      bottom: calc(100% - 12px);
+      bottom: calc(100% - 13px);
     }
     .spawn-tree-root {
       padding-left: 0;
@@ -386,40 +392,47 @@
       display: none;
     }
     .spawn-tree-label {
-      display: inline-flex;
-      align-items: center;
+      display: flex;
+      align-items: baseline;
       gap: 6px;
-      padding: 3px 8px;
+      padding: 2px 6px;
       border-radius: 4px;
       cursor: pointer;
       transition: background 0.15s;
+      margin: 1px 0;
     }
     .spawn-tree-label:hover {
-      background: rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.06);
     }
     .spawn-tree-label.current {
-      background: rgba(59,130,246,0.15);
-      border: 1px solid rgba(59,130,246,0.3);
+      background: rgba(59,130,246,0.12);
+      border: 1px solid rgba(59,130,246,0.25);
     }
     .spawn-tree-label .st-agent {
       color: var(--accent);
       font-weight: 500;
+      white-space: nowrap;
+      flex-shrink: 0;
     }
     .spawn-tree-label .st-id {
       color: var(--muted);
       font-family: var(--mono);
       font-size: 11px;
+      white-space: nowrap;
+      flex-shrink: 0;
     }
     .spawn-tree-label .st-task {
       color: var(--muted);
       font-size: 11px;
-      max-width: 200px;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      min-width: 0;
+      flex: 1;
     }
     .spawn-tree-label .st-icon {
-      font-size: 14px;
+      font-size: 12px;
+      flex-shrink: 0;
     }
     .spawn-tree-empty {
       color: var(--muted);
@@ -2143,26 +2156,45 @@
         return;
       }
 
-      function renderNode(agent, sessionId, task, isCurrent, isRoot, kids) {
+      function smartTaskPreview(task, isExec) {
+        if (!task) return '';
+        // For exec spawns: extract meaningful part from commands
+        if (isExec) {
+          // git commit -m "msg" -> show the msg
+          const commitMatch = task.match(/git commit[^"]*"([^"]{1,80})/);
+          if (commitMatch) return commitMatch[1] + (commitMatch[1].length >= 80 ? '…' : '');
+          // codex exec --full-auto "task" -> show the task
+          const codexMatch = task.match(/codex exec[^"]*"([^"]{1,80})/);
+          if (codexMatch) return codexMatch[1] + (codexMatch[1].length >= 80 ? '…' : '');
+          // grep/which/cd commands -> show abbreviated
+          if (task.match(/^(grep|which|cd |ls |cat |wc )/)) return task.slice(0, 50) + (task.length > 50 ? '…' : '');
+        }
+        const max = 80;
+        return task.slice(0, max) + (task.length > max ? '…' : '');
+      }
+
+      function renderNode(agent, sessionId, task, isCurrent, isRoot, kids, isExec) {
         const shortId = sessionId ? (sessionId.length > 12 ? sessionId.slice(0, 8) : sessionId) : '';
         const cls = isRoot ? 'spawn-tree-root' : 'spawn-tree-node';
         let html = `<div class="${cls}">`;
         html += `<div class="spawn-tree-label${isCurrent ? ' current' : ''}" data-nav-agent="${escapeHtml(agent)}" data-nav-session="${escapeHtml(sessionId || '')}">`;
-        html += `<span class="st-icon">${isRoot ? '\ud83c\udf33' : '\ud83d\udd17'}</span>`;
+        const icon = isRoot ? '📂' : (isExec ? '⚡' : '🔗');
+        html += `<span class="st-icon">${icon}</span>`;
         html += `<span class="st-agent">${escapeHtml(agent)}</span>`;
         if (shortId) html += `<span class="st-id">${escapeHtml(shortId)}</span>`;
-        if (task && !isRoot) html += `<span class="st-task" title="${escapeHtml(task)}">${escapeHtml(task.slice(0, 60))}${task.length > 60 ? '\u2026' : ''}</span>`;
+        const preview = smartTaskPreview(task, isExec);
+        if (preview && !isRoot) html += `<span class="st-task" title="${escapeHtml(task)}">${escapeHtml(preview)}</span>`;
         html += `</div>`;
         for (const kid of kids) {
           const kidKey = kid.agent + '/' + (kid.sessionId || '');
           const grandkids = kid.sessionId ? (childrenOf[kidKey] || []) : [];
-          html += renderNode(kid.agent, kid.sessionId || null, kid.task, false, false, grandkids);
+          html += renderNode(kid.agent, kid.sessionId || null, kid.task, false, false, grandkids, kid.isExecSpawn);
         }
         html += `</div>`;
         return html;
       }
 
-      treeDiv.innerHTML = renderNode(currentAgent, currentSession, '', true, true, myChildren);
+      treeDiv.innerHTML = renderNode(currentAgent, currentSession, '', true, true, myChildren, false);
 
       // Bind click navigation
       treeDiv.querySelectorAll('.spawn-tree-label[data-nav-agent]').forEach(el => {
