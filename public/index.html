@@ -5,6 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Agent Logs Viewer</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📋</text></svg>">
   <style>
     :root {
       --bg: #0d1117;
@@ -271,6 +272,22 @@
       border: 1px solid var(--border);
       color: var(--muted);
       background: rgba(255, 255, 255, 0.02);
+    }
+
+    .filter-badge {
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+
+    .filter-badge:hover {
+      border-color: var(--muted);
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .filter-badge.active {
+      border-color: rgba(31, 111, 235, 0.6);
+      background: rgba(31, 111, 235, 0.15);
+      color: #58a6ff;
     }
 
     .badge.active {
@@ -1092,6 +1109,7 @@
       refreshTimer: null,
       spawnMap: [],
       navStack: [],
+      msgFilter: null, // null | 'user' | 'assistant' | 'toolCall' | 'toolResult' | 'error' | 'spawn'
       settings: { openclawDir: '', codexDir: '', claudeCodeDir: '' }
     };
 
@@ -1618,18 +1636,18 @@
           <div class="summary-section">
             <div class="summary-section-title">Messages</div>
             <div class="token-grid">
-              <span class="badge">👤 User: ${userCount}</span>
-              <span class="badge">🤖 Assistant: ${assistantCount}</span>
-              <span class="badge">💬 Total: ${msgs.length}</span>
+              <span class="badge filter-badge${state.msgFilter === 'user' ? ' active' : ''}" data-filter="user" title="Click to show only user messages">👤 User: ${userCount}</span>
+              <span class="badge filter-badge${state.msgFilter === 'assistant' ? ' active' : ''}" data-filter="assistant" title="Click to show only assistant messages">🤖 Assistant: ${assistantCount}</span>
+              <span class="badge filter-badge${state.msgFilter === null ? ' active' : ''}" data-filter="all" title="Click to show all messages">💬 Total: ${msgs.length}</span>
             </div>
           </div>
           <div class="summary-section">
             <div class="summary-section-title">Tools</div>
             <div class="token-grid">
-              <span class="badge">🔧 Tool Calls: ${toolCallCount}</span>
-              <span class="badge">📋 Tool Results: ${toolResultCount}</span>
-              ${errorCount ? `<span class="badge" style="color:#ff7b72">❌ Errors: ${errorCount}</span>` : ''}
-              ${spawnCount ? `<span class="badge" style="color:#f0883e">🔗 Spawns: ${spawnCount}</span>` : ''}
+              <span class="badge filter-badge${state.msgFilter === 'toolCall' ? ' active' : ''}" data-filter="toolCall" title="Click to show only tool calls">🔧 Tool Calls: ${toolCallCount}</span>
+              <span class="badge filter-badge${state.msgFilter === 'toolResult' ? ' active' : ''}" data-filter="toolResult" title="Click to show only tool results">📋 Tool Results: ${toolResultCount}</span>
+              ${errorCount ? `<span class="badge filter-badge${state.msgFilter === 'error' ? ' active' : ''}" data-filter="error" title="Click to show only errors" style="color:#ff7b72">❌ Errors: ${errorCount}</span>` : ''}
+              ${spawnCount ? `<span class="badge filter-badge${state.msgFilter === 'spawn' ? ' active' : ''}" data-filter="spawn" title="Click to show only spawn calls" style="color:#f0883e">🔗 Spawns: ${spawnCount}</span>` : ''}
             </div>
           </div>
           ${topTools ? `<div class="summary-section">
@@ -1642,6 +1660,16 @@
           </div>
         </div>
       `;
+
+      // Bind filter badge clicks
+      summary.querySelectorAll('.filter-badge').forEach((badge) => {
+        badge.addEventListener('click', () => {
+          const f = badge.getAttribute('data-filter');
+          state.msgFilter = (f === 'all') ? null : f;
+          renderSummary();
+          renderMessages();
+        });
+      });
     }
 
     function renderMessages() {
@@ -1663,6 +1691,28 @@
           if (msg.role === 'reasoning') {
             const hasText = (msg.content || []).some((c) => c.type === 'text' && (c.text || '').trim());
             if (!hasText) return false;
+          }
+          // Apply stat filter
+          const f = state.msgFilter;
+          if (f === 'user') return msg.role === 'user';
+          if (f === 'assistant') return msg.role === 'assistant';
+          if (f === 'toolCall') {
+            if (msg.role === 'toolCall') return true;
+            return (msg.content || []).some(c => c.type === 'toolCall');
+          }
+          if (f === 'toolResult') return msg.role === 'toolResult';
+          if (f === 'error') return msg.role === 'toolResult' && msg.isError;
+          if (f === 'spawn') {
+            if (msg.role === 'toolCall' && msg.toolName === 'sessions_spawn') return true;
+            return (msg.content || []).some(c => {
+              if (c.type !== 'toolCall') return false;
+              if (c.name === 'sessions_spawn') return true;
+              if (c.name === 'exec' && typeof (c.arguments||{}).command === 'string') {
+                const cmd = c.arguments.command.toLowerCase();
+                return cmd.includes('codex ') || cmd.includes('claude ');
+              }
+              return false;
+            });
           }
           return true;
         });
