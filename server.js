@@ -11,6 +11,7 @@ const mountLibraryRoutes = require('./lib/routes/library');
 const mountBackupRoutes = require('./lib/routes/backup');
 const mountWatchRoutes = require('./lib/routes/watch');
 const mountLlmRoutes = require('./lib/routes/llm');
+const { csrfGuard } = require('./lib/csrf');
 
 const app = express();
 const PORT = process.env.PORT || 3800;
@@ -35,6 +36,8 @@ if (HAS_DIST) {
 } else {
   app.use(express.static(PUBLIC_DIR, { maxAge: 0, etag: false, lastModified: false }));
 }
+// Reject cross-site POST/PUT/DELETE before the body is parsed (lib/csrf.js).
+app.use('/api', csrfGuard);
 app.use(express.json({ limit: '256kb' }));
 
 // Disable all caching
