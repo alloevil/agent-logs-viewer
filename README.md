@@ -43,6 +43,7 @@ If you build and operate your own agent in production, use a tracing platform. I
 
 ## Features
 
+- **Per-turn ledger** — In the session summary: one row per user turn with wall-clock time, tokens (input + output + cache) and cost, bars scaled to the session maximum, tool-call and error counts, click to jump. Answers "why did this take 40 minutes / cost $3" without reading the transcript.
 - **Multi-platform** — Unified view across OpenClaw, Codex, Claude Code, Hermes, OMP, DeepSeek Harness and Gemini CLI sessions (dsh's multi-frame zstd session logs are decompressed transparently; Gemini CLI's `/rewind` checkpoints are folded so rewound history never renders twice)
 - **Session browser** — Browse agents, filter/search sessions, view message history
 - **Tool call inspection** — Expandable tool calls with arguments and results

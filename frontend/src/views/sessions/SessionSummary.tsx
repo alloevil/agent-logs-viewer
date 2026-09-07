@@ -10,6 +10,7 @@ import { formatCost, formatDurationCompact } from '@/lib/pure';
 import { cn } from '@/lib/utils';
 import { dirForPlatform, loadStoredFlag, saveStoredFlag, SUMMARY_COLLAPSED_KEY, useAppStore } from '@/store';
 import { ChildAgentsSection } from '@/views/trace/ChildAgentsSection';
+import { TurnLedger } from './TurnLedger';
 import type { ExportFormat } from './exports';
 import { runExport } from './exports';
 import type { MsgFilter, TimingAnalysis } from './lib';
@@ -350,6 +351,7 @@ export function SessionSummary({
               </div>
             </div>
           </div>
+          <TurnLedger messages={msgs} onScrollToMessage={onScrollToMessage} />
           <ChildAgentsSection />
         </div>
       ) : null}
