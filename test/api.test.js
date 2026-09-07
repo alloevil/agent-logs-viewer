@@ -449,3 +449,45 @@ describe('backup', () => {
     assert.ok(typeof status.lastBackup === 'string');
   });
 });
+
+describe('csrf guard', () => {
+  let srv;
+  before(async () => {
+    srv = await startServer();
+  });
+  after(async () => {
+    await srv.stop();
+  });
+
+  const send = (method, headers, pathname = '/api/prompts/hidden') =>
+    fetch(srv.base + pathname, {
+      method,
+      headers: { 'Content-Type': 'application/json', ...headers },
+      body: method === 'GET' ? undefined : JSON.stringify({ hash: 'deadbeef' }),
+    });
+
+  it('rejects a state-changing request whose Origin is another site', async () => {
+    const res = await send('POST', { Origin: 'https://evil.example' });
+    assert.equal(res.status, 403);
+    const body = await res.json();
+    assert.match(body.reason, /origin https:\/\/evil\.example/);
+  });
+
+  it('rejects when Sec-Fetch-Site says cross-site even without Origin', async () => {
+    const res = await send('DELETE', { 'Sec-Fetch-Site': 'cross-site' }, '/api/prompts/hidden/deadbeef');
+    assert.equal(res.status, 403);
+  });
+
+  it('accepts same-origin browser requests and origin-less clients', async () => {
+    const host = new URL(srv.base).host;
+    const same = await send('POST', { Origin: `http://${host}`, 'Sec-Fetch-Site': 'same-origin' });
+    assert.notEqual(same.status, 403);
+    const curl = await send('POST', {});
+    assert.notEqual(curl.status, 403);
+  });
+
+  it('never blocks reads, whatever the origin', async () => {
+    const res = await send('GET', { Origin: 'https://evil.example', 'Sec-Fetch-Site': 'cross-site' }, '/api/version');
+    assert.equal(res.status, 200);
+  });
+});
