@@ -107,6 +107,7 @@ test('pure.js exports the moved helpers via require', () => {
     'formatBytes',
     'formatCost',
     'buildTraceTurns',
+    'buildTurnLedger',
     'parseTimestampMs',
     'getTextContent',
     'clusterPrefillContent',
@@ -351,4 +352,59 @@ test('renderMarkdownHtml renders headings, lists, links and fenced code', () => 
   assert.ok(html.includes('<ol><li>one</li></ol>'));
   assert.ok(html.includes('<a href="https://e.co/a&amp;b" target="_blank" rel="noopener">x</a>'));
   assert.ok(html.includes('<pre><code data-lang="js">code&lt;&gt;\n</code></pre>'));
+});
+
+// --- buildTurnLedger: per-turn time / tokens / cost ---
+
+test('buildTurnLedger attributes time, tools, tokens and cost to the user turn that caused them', () => {
+  const msgs = [
+    { id: 's', role: 'system', timestamp: iso(-1000), content: [] }, // preamble: no turn
+    { id: 'u1', role: 'user', timestamp: iso(0), content: [{ type: 'text', text: 'first  question' }] },
+    {
+      id: 'a1',
+      role: 'assistant',
+      timestamp: iso(5000),
+      usage: { input: 1000, output: 200, cacheRead: 5000, cost: 0.02 },
+      content: [
+        { type: 'text', text: 'x' },
+        { type: 'toolCall', id: 'c1', name: 'bash' },
+      ],
+    },
+    { id: 'tr', role: 'toolResult', timestamp: iso(8000), toolCallId: 'c1', isError: true, content: [] },
+    {
+      id: 'a2',
+      role: 'assistant',
+      timestamp: iso(9000),
+      usage: { input: 1200, output: 50, cost: { total: 0.01 } },
+      content: [],
+    },
+    { id: 'u2', role: 'user', timestamp: iso(20000), content: [{ type: 'text', text: 'second' }] },
+    { id: 'a3', role: 'assistant', timestamp: iso(21000), usage: { total_tokens: 300 }, content: [] },
+  ];
+  const l = pure.buildTurnLedger(msgs);
+  assert.equal(l.rows.length, 2);
+  const [t1, t2] = l.rows;
+  assert.equal(t1.text, 'first question');
+  assert.equal(t1.messageId, 'u1');
+  assert.equal(t1.durationMs, 9000); // user msg -> last agent msg of the turn
+  assert.equal(t1.toolCalls, 1); // content-part toolCall counted once
+  assert.equal(t1.toolErrors, 1);
+  assert.deepEqual([t1.inputTokens, t1.outputTokens, t1.cacheReadTokens, t1.cacheWriteTokens], [2200, 250, 5000, 0]);
+  assert.ok(Math.abs(t1.cost - 0.03) < 1e-9); // number and {total} cost shapes both summed
+  assert.equal(t2.durationMs, 1000);
+  assert.equal(t2.inputTokens, 300); // total_tokens-only platforms land in the input column
+  assert.equal(t2.cost, 0);
+  assert.deepEqual(l.totals, { durationMs: 10000, toolCalls: 1, tokens: 7750, cost: 0.03 });
+  assert.equal(l.hasUsage, true);
+  assert.equal(l.hasCost, true);
+});
+
+test('buildTurnLedger without usage still yields time rows and reports hasUsage=false', () => {
+  const l = pure.buildTurnLedger([
+    { id: 'u1', role: 'user', timestamp: iso(0), content: [{ type: 'text', text: 'q' }] },
+    { id: 'a1', role: 'assistant', timestamp: iso(3000), content: [] },
+  ]);
+  assert.equal(l.rows[0].durationMs, 3000);
+  assert.equal(l.hasUsage, false);
+  assert.equal(l.hasCost, false);
 });
