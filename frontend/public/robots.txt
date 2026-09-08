@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://alloevil.github.io/AgentXRay/sitemap.xml

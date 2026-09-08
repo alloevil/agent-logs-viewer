@@ -1,0 +1,19 @@
+{
+  "project": "AgentXRay",
+  "url": "https://alloevil.github.io/AgentXRay/",
+  "repository": "https://github.com/alloevil/AgentXRay",
+  "updated": "2026-09-08",
+  "claims": [
+    {
+      "id": "supported-log-formats",
+      "claim": "AgentXRay has a registered adapter for 7 agent session log formats: OpenClaw, Codex, Claude Code, OMP, DeepSeek Harness, Gemini CLI and Hermes.",
+      "value": "7",
+      "metric": "number of platform adapters registered in the PLATFORMS dispatch table that every session route, search, watch, insights, prompt and export path resolves through",
+      "method": "counted the keys of the PLATFORMS object exported by lib/platforms/index.js in the committed source",
+      "repro": "node -e 'console.log(Object.keys(require(\"./lib/platforms/index.js\").PLATFORMS).join(\", \"))'",
+      "evidence": "https://github.com/alloevil/AgentXRay/blob/master/lib/platforms/index.js",
+      "verified": "2026-09-08"
+    }
+  ],
+  "notClaimed": "No performance, accuracy or benchmark numbers are published for AgentXRay, because none are measured in this repository."
+}
