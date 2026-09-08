@@ -60,14 +60,14 @@
   /*
    * The dashboard still owns exactly one viewport; the page scrolls past it to
    * reach the static #about section that lives after #root in index.html.
+   * Scroll chaining is left at the default on purpose: `overscroll-behavior:
+   * contain` on the inner panes blocks the chain even when a pane has nothing
+   * to scroll, which traps the wheel over most of the dashboard and makes
+   * #about unreachable by the one gesture a visitor will actually try.
    */
   #root {
     height: 100vh;
     height: 100dvh;
-  }
-  /* Keep the dashboard's own scroll panes from dragging the page along. */
-  #root * {
-    overscroll-behavior: contain;
   }
   body {
     @apply text-foreground font-sans antialiased;
