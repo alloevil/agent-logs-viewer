@@ -1,10 +1,16 @@
 # AgentXRay
 
-AI Agent 会话 X 光透视工具，支持 **OpenClaw**、**Codex**、**Claude Code**、**Hermes**、**OMP**、**DeepSeek Harness** 和 **Gemini CLI** —— 一个界面全搞定。
+**AgentXRay** 是一个 local-first 的 Web 面板，直接读取并可视化 AI coding agent 已经写在你磁盘上的会话日志，面向想看清这些 agent 究竟做了什么的开发者。
 
 [English](README.md) | 中文
 
 **[在线 Demo](https://alloevil.github.io/AgentXRay/)**（合成示例数据，非真实用户会话）
+
+## 这是什么
+
+AI Agent 会话 X 光透视工具，支持 **OpenClaw**、**Codex**、**Claude Code**、**Hermes**、**OMP**、**DeepSeek Harness** 和 **Gemini CLI** —— 一个界面全搞定。
+
+AgentXRay 由一个 Node.js + Express 服务和一套 React UI 组成：它读取这些 CLI 本来就写在你 home 目录下的 JSONL 会话日志（Hermes 是 SQLite），把七种格式归一化到同一个视图 —— 工具调用与结果自动配对、按轮次汇总 token 与花费、每轮耗时瀑布图、prompt 提取、跨平台全文搜索。零埋点、零接入，数据不出本机。
 
 ## 为什么是 AgentXRay
 
@@ -17,6 +23,34 @@ LangSmith、Langfuse 这类观测平台面向的是*你自己写的* agent：接
 如果你在生产环境构建和运营自己的 agent，请用 tracing 平台；如果你想看清 coding agent 到底干了什么，用 AgentXRay。
 
 ![Main View](screenshots/main-view.png)
+
+## 何时该用
+
+- 你在用一个或多个 CLI coding agent，想复盘某次会话到底做了什么：调用了哪些工具、参数是什么、返回了什么、时间和 token 花在哪里。
+- 你想按用户轮次核算 token 与花费，而这些会话早已结束，当时并没有做任何埋点。
+- 你需要一次搜索全部 agent 平台，包括从 Claude Code 自身清理机制已删除的会话里恢复出来的 prompt。
+- 你希望会话数据只留在本机：不装 SDK、不注册账号、不外传。
+- 你想把值得复用的 prompt 收集起来，并一键安装为 Claude Code、Codex 或 OMP 的原生 slash command。
+
+## 何时不该用
+
+- **你在做自己的 agent，需要生产级 tracing。** 那请用观测平台。AgentXRay 读的是已经落盘的日志文件，它不是埋点 SDK，没有托管后端、数据留存策略、告警和团队看板。
+- **你需要多人协作或远程托管的服务。** 它是单进程本地服务，设计上就跑在持有日志的那台机器上。
+- **你的 agent 不以受支持的格式落盘。** 目前只支持 `lib/platforms/index.js` 中注册的七个适配器，其他格式需要新写一个适配器（见 [开发](#开发)）。
+- **你无法使用 Node.js ≥ 22.13**，或需要在低于 22.15 的 Node 上读取压缩的 DeepSeek Harness 日志。
+- **你期待 `public/` 下的 legacy 原生 UI 继续加功能。** 它已冻结，仅接受安全修复。
+- **你期待 LLM prompt 改写开箱即用。** 该功能需要在 设置 → LLM 接口 配好 OpenAI 兼容端点，或者服务端 PATH 上有 `claude` CLI；两者都没有时，聚类与归因仍然可用，但改写会返回 HTTP 503。
+
+## 与 LangSmith / Langfuse 的区别
+
+| | AgentXRay | LangSmith / Langfuse |
+|---|---|---|
+| 面向 | 你磁盘上已有的 agent 会话 | 你自己写的 agent |
+| 接入方式 | 无需接入，直接读现有日志文件 | 接入 SDK，在代码里埋点 |
+| 能否覆盖现成 CLI agent（Claude Code、Codex、Gemini CLI） | 可以，它们本来就在落盘 | 不适用，这些代码不是你的，没法埋点 |
+| 数据存放 | 仅本机 | 托管后端 |
+
+一句话：在生产环境构建和运营自己的 agent，请用 tracing 平台；想看清 coding agent 到底干了什么，用 AgentXRay。本项目只与 LangSmith、Langfuse 作对比，不评价其他工具。
 
 ## 功能特性
 
@@ -71,16 +105,16 @@ LangSmith、Langfuse 这类观测平台面向的是*你自己写的* agent：接
 
 ![Settings](screenshots/settings-panel.png)
 
-## 快速开始
+## 安装
 
-**方式一 — 通过 npm 使用 npx**（包发布到 npm 后可用）
+**方式一 — 通过 npm 使用 npx**
 
 ```bash
 npx @alloevil/agent-xray            # 默认 http://localhost:3800
 npx @alloevil/agent-xray --port 3900 --host 127.0.0.1
 ```
 
-全局安装（`npm i -g agent-xray`）后可直接使用 `agentxray` 命令。
+全局安装（`npm i -g @alloevil/agent-xray`）后可直接使用 `agentxray` 命令。
 
 **方式二 — 直接从 GitHub 运行 npx**（现在即可用，无需克隆）
 
@@ -241,6 +275,23 @@ dsh 的 `.jsonl.zstd` 日志是多个独立 Zstandard 帧的串联（每个持�
 测试代码位于 `test/`，使用 Node 内置的测试运行器，无需额外依赖。先执行一次 `npm ci`，然后运行 `npm test`（即 `node --test test/*.test.js`）。测试会在随机端口上启动自己的服务实例，并把 `HOME` 及各平台目录都指向 `test/fixtures/home` 的临时副本，因此不会读取或修改你的真实会话日志。CI 在每次向 `master` 的 push 和 pull request 上以 Node 22 执行同样的两条命令（见 `.github/workflows/test.yml`）。
 
 **新增平台只需两个文件**：在 `lib/platforms/<name>.js` 写一个适配器（针对该日志格式的 list / find / parse / normalize，`lib/platforms/shared.js` 提供元数据缓存、归一化消息工厂和会话排序），再到 `lib/platforms/index.js` 的 `PLATFORMS` 注册表登记一条。通用会话路由、搜索、watch（SSE 实时跟踪）、洞察、Prompt 提取、工具体检、OTLP 与 Markdown/HTML 导出全部通过该注册表解析平台，无需改动其他文件。
+
+## 常见问题
+
+**AgentXRay 支持哪些 agent 和日志格式？**
+七个平台：OpenClaw、Codex、Claude Code、Hermes、OMP（oh-my-pi）、DeepSeek Harness 和 Gemini CLI。其中六个是 JSONL，Hermes 是位于 `~/.hermes/state.db` 的 SQLite。DeepSeek Harness 的日志可能是多帧 zstd 压缩的 `.jsonl.zstd`，AgentXRay 会逐帧解压，并容忍崩溃残留的尾部不完整帧。权威清单是 `lib/platforms/index.js` 里的 `PLATFORMS` 注册表，可用 `node -e 'console.log(Object.keys(require("./lib/platforms/index.js").PLATFORMS))'` 打印。
+
+**AgentXRay 会把我的会话数据传到别处吗？**
+不会。它是一个读取你本机磁盘文件的本地 Node.js 服务，UI 完全自包含、零外部 CDN，因此离线也能用。唯一可能产生外发流量的是可选的 prompt 改写功能：它调用你自己配置的 OpenAI 兼容端点，或调起本机的 `claude` CLI；两者都不配置时，不会有任何数据外发。
+
+**需要改动我的 agent 或加埋点吗？**
+不需要。CLI coding agent 本来就把完整会话日志写在磁盘上，AgentXRay 只是读它们。你不需要在代码里接 SDK，也不需要用什么包装命令来启动 agent。默认安装同样无需配置，[配置](#配置) 一节列出的默认目录会直接生效，除非你在设置面板里改，或用 `CLAUDE_CODE_DIR` 之类的环境变量覆盖。
+
+**不装任何东西能先试试吗？**
+可以，打开 <https://alloevil.github.io/AgentXRay/>。这个 GitHub Pages 部署就是真实的 React UI，由 `.github/workflows/pages.yml` 构建，跑在仓库里提交的合成示例日志 `frontend/demo/sample-logs` 上。它不含任何真实用户会话，所以请把它当作界面导览，而不是数据。
+
+**想支持一个没列出的日志格式怎么办？**
+两个文件：在 `lib/platforms/<name>.js` 写一个适配器，实现该格式的 list / find / parse / normalize，然后在 `lib/platforms/index.js` 的 `PLATFORMS` 表里登记一条。所有通用路由都通过该注册表解析平台，无需改动其他文件。详见 [开发](#开发)。
 
 ## 开源协议
 

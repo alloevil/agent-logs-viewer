@@ -1,0 +1,111 @@
+# AgentXRay
+
+AgentXRay is a local-first web dashboard that reads and visualizes the session logs your AI coding agents already write to disk, for developers who want to see what those agents actually did.
+
+## What it is
+
+AgentXRay is a single Node.js + Express server plus a React/Vite UI that points at the session-log directories your existing agent CLIs already write to (`~/.claude/projects`, `~/.codex/sessions`, `~/.openclaw/agents`, `~/.omp/agent/sessions`, `~/.dsh/sessions`, `~/.gemini/tmp`, `~/.hermes/state.db`) and renders them as browsable sessions. It is a reader, not a tracing SDK: there is nothing to instrument, no API key, no hosted backend, and no data leaves the machine it runs on. Seven different on-disk formats are normalized into one model, so tool calls are paired with their results, token usage and cost are summed per user turn, per-turn time is split into model inference versus tool execution, real human prompts are extracted with tool results and slash-command echoes filtered out, and one search box queries every platform at once. The published GitHub Pages site at https://alloevil.github.io/AgentXRay/ is the same React UI running on the synthetic sample logs committed under `frontend/demo/sample-logs`, so it can be evaluated without installing anything.
+
+## Install
+
+Run from npm without installing (recommended):
+
+```bash
+npx @alloevil/agent-xray            # default http://localhost:3800
+npx @alloevil/agent-xray --port 3900 --host 127.0.0.1
+```
+
+Global install, which exposes the `agentxray` launcher:
+
+```bash
+npm i -g @alloevil/agent-xray
+agentxray
+```
+
+Run straight from GitHub without cloning (the first run builds the web UI locally):
+
+```bash
+npx github:alloevil/AgentXRay
+```
+
+From source:
+
+```bash
+git clone https://github.com/alloevil/AgentXRay.git
+cd AgentXRay
+npm install               # also builds the web UI on first install
+npm start
+```
+
+Requires Node.js >= 22.13 (the `engines` field in `package.json`). Reading DeepSeek Harness `.jsonl.zstd` logs additionally requires Node.js >= 22.15, because it relies on Node's built-in zstd support; plain `session.jsonl` logs work on any supported Node.
+
+## Quickstart
+
+```bash
+npx @alloevil/agent-xray
+# open http://localhost:3800
+```
+
+Then, in the UI: pick a platform in the top bar (`OpenClaw`, `Codex`, `Claude Code`, `Hermes`, `OMP`, `DeepSeek Harness`, `Gemini CLI`), pick a session from the sidebar, and click any `🔧 tool_name` button to expand that call's arguments and result. Sessions that spawned sub-agents carry a 🔗 badge you can click to walk the parent/child chain.
+
+Point it at non-default log directories without touching the UI:
+
+```bash
+CLAUDE_CODE_DIR=/custom/path/claude CODEX_DIR=/custom/path/codex npm start
+```
+
+Every list and detail endpoint also accepts `?dir=/absolute/path`, and the same data is available over HTTP:
+
+```bash
+curl 'http://localhost:3800/api/claude-code/sessions'
+curl 'http://localhost:3800/api/search?platform=all&q=refactor'
+```
+
+## Verifiable claims
+
+- **7 agent log formats have a registered adapter.** The number is the count of keys in the `PLATFORMS` registry in `lib/platforms/index.js`, which is the single dispatch table that every session route, search, watch, insights, prompt and export path resolves through. Reproduce from a clone with
+  `node -e 'console.log(Object.keys(require("./lib/platforms/index.js").PLATFORMS).join(", "))'`,
+  which prints `openclaw, codex, claude-code, omp, dsh, gemini, hermes`.
+  Evidence: https://github.com/alloevil/AgentXRay/blob/master/lib/platforms/index.js
+- **The test suite never reads your real session logs.** The tests in `test/` start their own server on a random port with `HOME` and every platform directory pointed at a throwaway copy of `test/fixtures/home`. Reproduce with `npm ci && npm test`, which uses Node's built-in test runner and no extra dependencies. CI runs the same two commands on Node 22 for every push and pull request to `master`.
+  Evidence: https://github.com/alloevil/AgentXRay/tree/master/test and https://github.com/alloevil/AgentXRay/blob/master/.github/workflows/test.yml
+
+No performance, accuracy or benchmark numbers are published for AgentXRay, because none are measured in the repository. Any such figure quoted elsewhere does not come from this project.
+
+## When to use it
+
+- You use one or more CLI coding agents and want to review what a session actually did: which tools ran, with what arguments, what came back, and where the time and tokens went.
+- You want token and cost accounting per user turn for sessions that already finished, without having added instrumentation beforehand.
+- You need to search across every agent platform at once, including prompts recoverable from sessions that Claude Code's own cleanup already deleted.
+- You want your session data to stay on your machine: no SDK, no account, no egress.
+- You want to collect the prompts worth keeping and install them as native slash commands for Claude Code, Codex or OMP.
+
+## When NOT to use it
+
+- **You are building your own agent and want production tracing.** Use an observability platform instead (see the comparison below). AgentXRay reads finished log files; it is not an instrumentation SDK and has no hosted backend, retention policy, alerting or team dashboard.
+- **You need a multi-user or remotely hosted service.** It is a single-process local server meant to run on the machine that owns the logs.
+- **Your agent does not write session logs in a supported format.** Only the seven registered adapters are supported; anything else needs a new adapter under `lib/platforms/`.
+- **You cannot run Node.js >= 22.13**, or you need compressed DeepSeek Harness logs on a Node older than 22.15.
+- **You want the legacy vanilla UI to gain features.** The `public/` app served at `/legacy` is frozen and receives security fixes only; new features land in the React app exclusively.
+- **You expect LLM-powered prompt rewriting to work out of the box.** That feature needs either an OpenAI-compatible endpoint configured in Settings → LLM 接口 or the `claude` CLI on the server's PATH; without one, prompt clustering and outcome attribution still work but rewriting returns HTTP 503 with guidance.
+
+## Compared to LangSmith and Langfuse
+
+LangSmith and Langfuse are observability platforms designed for agents you write yourself: you add their SDK, instrument your code, and traces stream to a hosted backend where they can be retained, shared and alerted on. That model does not apply to off-the-shelf CLI coding agents, because Claude Code, Codex and Gemini CLI are not your code to instrument. Those agents do, however, already write complete session logs to your disk, which is exactly what AgentXRay reads. So the split is: if you build and operate your own agent in production, use a tracing platform; if you want to see what your coding agents actually did, use AgentXRay. AgentXRay deliberately gives up what a hosted platform provides — team access, retention, alerting, cross-machine aggregation — in exchange for zero integration and zero egress. These two are the only alternatives the repository discusses, and AgentXRay makes no claims about any other tool.
+
+## FAQ
+
+**Which agents and log formats does AgentXRay support?**
+AgentXRay reads session logs from seven platforms: OpenClaw, Codex, Claude Code, Hermes, OMP (oh-my-pi), DeepSeek Harness and Gemini CLI. Six store JSONL; Hermes stores SQLite at `~/.hermes/state.db`. DeepSeek Harness logs may be multi-frame zstd-compressed `.jsonl.zstd`, which AgentXRay decompresses frame by frame while tolerating a torn trailing frame left by a crash. The authoritative list is the `PLATFORMS` registry in `lib/platforms/index.js`.
+
+**Does AgentXRay send my session data anywhere?**
+No. AgentXRay is a local Node.js server that reads files from your own disk and serves a self-contained UI with zero external CDN dependencies, so it also works offline. The only outbound traffic it can make is the optional prompt-rewrite feature, which calls an OpenAI-compatible endpoint you configure yourself or shells out to a local `claude` CLI; if you configure neither, nothing is sent anywhere.
+
+**Do I have to change my agent or add instrumentation?**
+No, and that is the point: CLI coding agents already write complete session logs to disk, and AgentXRay just reads them. There is no SDK to add to your code, no wrapper command to run your agent under, and no configuration needed for a default install, because the default directories (`~/.openclaw/agents`, `~/.codex/sessions`, `~/.claude/projects`, `~/.hermes`, `~/.omp/agent/sessions`, `~/.dsh/sessions`, `~/.gemini/tmp`) are used unless you override them in the settings panel or through environment variables such as `CLAUDE_CODE_DIR`.
+
+**How do I try it without installing anything?**
+Open https://alloevil.github.io/AgentXRay/. That GitHub Pages deployment is the real React UI, built by `.github/workflows/pages.yml`, running against the synthetic sample logs committed under `frontend/demo/sample-logs`. It contains no real user sessions, so treat it as a UI tour rather than as data. To use it on your own logs, run `npx @alloevil/agent-xray` and open http://localhost:3800.
+
+**How do I add support for a log format that is not listed?**
+It takes two files. Write one adapter at `lib/platforms/<name>.js` implementing list / find / parse / normalize for that format, using the metadata cache, normalized-message factory and session sort provided by `lib/platforms/shared.js`, then register it in the `PLATFORMS` table in `lib/platforms/index.js`. The generic session routes, search, watch (SSE tail), insights, prompts, tool audit, OTLP and Markdown/HTML export all resolve platforms through that registry, so no other file needs to change.

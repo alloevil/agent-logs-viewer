@@ -1,3 +1,7 @@
+# AgentXRay
+
+**AgentXRay** is a local-first web dashboard that reads and visualizes the session logs your AI coding agents already write to disk, for developers who want to see what those agents actually did.
+
 <p align="center">
   <img src="./assets/hero.svg" width="100%" alt="AgentXRay — X-ray vision into your AI agent sessions. Supports OpenClaw, Codex, Claude Code, and Hermes.">
 </p>
@@ -18,7 +22,7 @@
 </p>
 
 <p align="center">
-  <a href="#quick-start">Quick Start</a> ·
+  <a href="#install">Install</a> ·
   <a href="#features">Features</a> ·
   <a href="#screenshots">Screenshots</a> ·
   <a href="#api">API</a> ·
@@ -27,7 +31,11 @@
 
 ---
 
+## What it is
+
 X-ray vision into your AI agent sessions. Supports **OpenClaw**, **Codex**, **Claude Code**, **Hermes**, **OMP**, **DeepSeek Harness** and **Gemini CLI** — all in one interface.
+
+AgentXRay is a single Node.js + Express server plus a React UI. It reads the JSONL session logs (SQLite, for Hermes) that those CLIs already write under your home directory and normalizes all seven formats into one view: tool calls paired with their results, tokens and cost summed per user turn, per-turn trace waterfalls, prompt extraction and cross-platform full-text search. Nothing is instrumented, and nothing leaves your machine.
 
 ## Why AgentXRay
 
@@ -38,6 +46,34 @@ Observability platforms like LangSmith and Langfuse are built for agents *you* w
 Compared to grepping the raw JSONL yourself, AgentXRay normalizes seven different log formats into one interface: tool calls paired with their results, token usage summed per session, full-text search across every platform at once, prompt extraction, and trace timelines — things that are tedious to reconstruct by hand from a 50MB session log.
 
 If you build and operate your own agent in production, use a tracing platform. If you want to see what your coding agents actually did, use AgentXRay.
+
+## When to use it
+
+- You use one or more CLI coding agents and want to review what a session actually did — which tools ran, with what arguments, what came back, where the time and tokens went.
+- You want token and cost accounting per user turn for sessions that have already finished, without having instrumented anything beforehand.
+- You need to search across every agent platform at once, including prompts recoverable from sessions Claude Code's own cleanup already deleted.
+- You want your session data to stay on your machine: no SDK, no account, no egress.
+- You want to collect the prompts worth keeping and install them as native slash commands for Claude Code, Codex or OMP.
+
+## When NOT to use it
+
+- **You are building your own agent and want production tracing.** Use an observability platform instead. AgentXRay reads finished log files; it is not an instrumentation SDK and has no hosted backend, retention policy, alerting or team dashboard.
+- **You need a multi-user or remotely hosted service.** It is a single-process local server, meant to run on the machine that owns the logs.
+- **Your agent does not write session logs in a supported format.** Only the seven adapters registered in `lib/platforms/index.js` are supported; anything else needs a new adapter (see [Development](#development)).
+- **You cannot run Node.js ≥ 22.13**, or you need compressed DeepSeek Harness logs on a Node older than 22.15.
+- **You want the legacy vanilla UI under `public/` to gain features.** It is frozen and receives security fixes only.
+- **You expect the LLM-powered prompt rewriting to work with no setup.** It needs an OpenAI-compatible endpoint configured in Settings → LLM 接口, or the `claude` CLI on the server's PATH; without one, clustering and attribution still work but rewriting returns HTTP 503.
+
+## Compared to LangSmith and Langfuse
+
+| | AgentXRay | LangSmith / Langfuse |
+|---|---|---|
+| Built for | agent sessions you already have on disk | agents you write yourself |
+| Integration | none — reads existing log files | add their SDK and instrument your code |
+| Works with off-the-shelf CLI agents (Claude Code, Codex, Gemini CLI) | yes, they already log to disk | not their model — that code is not yours to instrument |
+| Where data lives | your machine only | hosted backend |
+
+Rule of thumb: if you build and operate your own agent in production, use a tracing platform. If you want to see what your coding agents actually did, use AgentXRay. LangSmith and Langfuse are the only alternatives this project makes any comparison against.
 
 ---
 
@@ -99,16 +135,16 @@ Configure platform directories from the UI. Changes are saved to localStorage �
 
 ---
 
-## Quick Start
+## Install
 
-**Option 1 — npx from npm** (once the package is published to npm)
+**Option 1 — npx from npm**
 
 ```bash
 npx @alloevil/agent-xray            # default http://localhost:3800
 npx @alloevil/agent-xray --port 3900 --host 127.0.0.1
 ```
 
-A global install (`npm i -g agent-xray`) exposes the same launcher as `agentxray`.
+A global install (`npm i -g @alloevil/agent-xray`) exposes the same launcher as `agentxray`.
 
 **Option 2 — npx straight from GitHub** (works today, no clone)
 
@@ -281,6 +317,25 @@ Archived sessions (`.jsonl.reset.*`, `.jsonl.deleted.*`) are also supported when
 Tests live in `test/` and use Node's built-in test runner — no extra dependencies. Run `npm ci` once, then `npm test` (`node --test test/*.test.js`). The tests start their own server on a random port with `HOME` and every platform directory pointed at a throwaway copy of `test/fixtures/home`, so your real session logs are never read or modified. CI runs the same two commands on Node 22 for every push and pull request to `master` (see `.github/workflows/test.yml`).
 
 **Adding a platform** takes two files: write one adapter in `lib/platforms/<name>.js` (list / find / parse / normalize for that log format — `lib/platforms/shared.js` provides the metadata cache, the normalized-message factory and the session sort), then register it in the `PLATFORMS` table in `lib/platforms/index.js`. The generic session routes, search, watch (SSE tail), insights, prompts, tool audit, OTLP and Markdown/HTML export all resolve platforms through that registry — no other file needs to change.
+
+---
+
+## FAQ
+
+**Which agents and log formats does AgentXRay support?**
+Seven platforms: OpenClaw, Codex, Claude Code, Hermes, OMP (oh-my-pi), DeepSeek Harness and Gemini CLI. Six of them store JSONL; Hermes stores SQLite at `~/.hermes/state.db`. DeepSeek Harness logs may be multi-frame zstd-compressed `.jsonl.zstd`, which AgentXRay decompresses frame by frame, tolerating a torn trailing frame left by a crash. The authoritative list is the `PLATFORMS` registry in `lib/platforms/index.js` — run `node -e 'console.log(Object.keys(require("./lib/platforms/index.js").PLATFORMS))'` to print it.
+
+**Does AgentXRay send my session data anywhere?**
+No. It is a local Node.js server reading files from your own disk, serving a self-contained UI with zero external CDN dependencies, so it works offline. The only outbound traffic it can make is the optional prompt-rewrite feature, which calls an OpenAI-compatible endpoint you configure yourself or shells out to a local `claude` CLI; configure neither and nothing is sent anywhere.
+
+**Do I have to change my agent or add instrumentation?**
+No. CLI coding agents already write complete session logs to disk, and AgentXRay just reads them. There is no SDK to add to your code and no wrapper command to run your agent under. A default install needs no configuration either, because the default directories listed under [Configuration](#configuration) are used unless you override them in the settings panel or through environment variables such as `CLAUDE_CODE_DIR`.
+
+**How do I try it without installing anything?**
+Open <https://alloevil.github.io/AgentXRay/>. That GitHub Pages deployment is the real React UI, built by `.github/workflows/pages.yml`, running against the synthetic sample logs committed under `frontend/demo/sample-logs`. It contains no real user sessions, so treat it as a UI tour rather than as data.
+
+**How do I add support for a log format that is not listed?**
+Two files: write an adapter at `lib/platforms/<name>.js` implementing list / find / parse / normalize for that format, then register it in the `PLATFORMS` table in `lib/platforms/index.js`. Every generic route resolves platforms through that registry, so no other file needs to change. See [Development](#development).
 
 ---
 

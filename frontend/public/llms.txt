@@ -1,0 +1,24 @@
+# AgentXRay
+
+> AgentXRay is a local-first web dashboard that reads and visualizes the session logs your AI coding agents already write to disk, for developers who want to see what those agents actually did.
+
+Coding agents such as Claude Code, Codex, OpenClaw, Hermes, OMP, DeepSeek Harness and Gemini CLI each persist their own JSONL (or SQLite) session log locally, in seven mutually incompatible shapes. AgentXRay normalizes all seven into one interface: tool calls paired with their results, token usage and cost summed per turn, per-turn trace waterfalls, prompt extraction and cross-platform full-text search. Nothing is instrumented and nothing leaves your machine — it is a reader over files that already exist. Install and run with `npx @alloevil/agent-xray`, then open http://localhost:3800.
+
+## Docs
+- [Live demo](https://alloevil.github.io/AgentXRay/): the React UI running on synthetic sample data, no install needed
+- [README (English)](https://github.com/alloevil/AgentXRay/blob/master/README.md): features, quick start, configuration and the full HTTP API table
+- [README (中文)](https://github.com/alloevil/AgentXRay/blob/master/README.zh-CN.md): the same documentation in Chinese
+- [SPEC.md](https://github.com/alloevil/AgentXRay/blob/master/SPEC.md): session log record types and server/UI specification
+- [SPAWN_TREE_SPEC.md](https://github.com/alloevil/AgentXRay/blob/master/SPAWN_TREE_SPEC.md): how parent/child agent spawn relationships are detected and rendered
+- [GRAPH_SPEC.md](https://github.com/alloevil/AgentXRay/blob/master/GRAPH_SPEC.md): message timeline graph specification
+- [ROADMAP.md](https://github.com/alloevil/AgentXRay/blob/master/docs/ROADMAP.md): planned work
+
+## Evidence
+- [claims.json](https://alloevil.github.io/AgentXRay/claims.json): machine-readable claims with the exact command that reproduces each number
+- [lib/platforms/index.js](https://github.com/alloevil/AgentXRay/blob/master/lib/platforms/index.js): the `PLATFORMS` registry — 7 registered adapters, the single source of truth for which log formats are supported
+- [test/](https://github.com/alloevil/AgentXRay/tree/master/test): Node built-in test-runner suite; `npm test` runs against a throwaway copy of `test/fixtures/home`, never your real logs
+- [.github/workflows/test.yml](https://github.com/alloevil/AgentXRay/blob/master/.github/workflows/test.yml): CI runs `npm ci` + `npm test` on Node 22 for every push and PR to `master`
+
+## Source
+- [GitHub repository](https://github.com/alloevil/AgentXRay)
+- [npm package @alloevil/agent-xray](https://www.npmjs.com/package/@alloevil/agent-xray)
