@@ -51,17 +51,69 @@
   * {
     @apply border-border;
   }
-  html,
-  body,
-  #root {
+  html {
     height: 100%;
   }
   body {
-    @apply text-foreground font-sans antialiased overflow-hidden;
+    min-height: 100%;
+  }
+  /*
+   * The dashboard still owns exactly one viewport; the page scrolls past it to
+   * reach the static #about section that lives after #root in index.html.
+   */
+  #root {
+    height: 100vh;
+    height: 100dvh;
+  }
+  /* Keep the dashboard's own scroll panes from dragging the page along. */
+  #root * {
+    overscroll-behavior: contain;
+  }
+  body {
+    @apply text-foreground font-sans antialiased;
     /* legacy background: two radial glows over --bg */
     background:
       radial-gradient(circle at top left, rgba(31, 111, 235, 0.14), transparent 28%),
       radial-gradient(circle at bottom right, rgba(35, 134, 54, 0.12), transparent 30%),
       hsl(var(--background));
+    background-attachment: fixed;
+  }
+}
+
+/*
+ * Static "About AgentXRay" section. Its markup lives in index.html, after
+ * #root, so React cannot own it and neither can a component stylesheet.
+ */
+@layer components {
+  #about {
+    @apply border-t border-border px-6 py-10 text-sm leading-relaxed text-muted-foreground;
+    background: hsl(var(--panel-alt));
+  }
+  #about > div {
+    @apply mx-auto flex max-w-3xl flex-col gap-4;
+  }
+  #about h2 {
+    @apply text-lg font-semibold text-foreground;
+  }
+  #about h3 {
+    @apply pt-2 text-base font-semibold text-foreground;
+  }
+  #about ul {
+    @apply grid gap-1 sm:grid-cols-2;
+  }
+  #about code {
+    @apply rounded bg-secondary px-1 py-0.5 font-mono text-xs text-foreground;
+  }
+  #about pre {
+    @apply overflow-x-auto rounded border border-border bg-card p-3 font-mono text-xs;
+  }
+  #about pre code {
+    @apply bg-transparent p-0;
+  }
+  #about a {
+    @apply text-primary underline-offset-2 hover:underline;
+  }
+  #about footer {
+    @apply flex flex-wrap gap-x-4 gap-y-1 border-t border-border pt-4;
   }
 }

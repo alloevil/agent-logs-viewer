@@ -39,6 +39,71 @@
   </head>
   <body>
     <div id="root"></div>
+    <!--
+      Static "About AgentXRay" section. It is deliberately OUTSIDE #root: React
+      replaces the children of #root when it mounts, so anything placed inside
+      would be destroyed. Kept here it is ordinary visible page content — the
+      page scrolls down to it — and it is also the only description of the
+      project that a reader without JavaScript ever gets. Styling lives in
+      src/index.css under the #about selector.
+    -->
+    <section id="about" lang="en">
+      <div>
+        <h2>AgentXRay — read the session logs your AI coding agents already write</h2>
+        <p>
+          AgentXRay is a local-first web dashboard that reads and visualizes the session logs your AI
+          coding agents already write to disk, for developers who want to see what those agents
+          actually did. It is a single Node.js + Express server plus this React UI, pointed at the log
+          directories your existing agent CLIs already use. It is a reader, not a tracing SDK: there
+          is nothing to instrument, no API key, no hosted backend, and no data leaves the machine it
+          runs on.
+        </p>
+        <h3>Agent log formats it reads</h3>
+        <p>
+          Seven on-disk session-log formats have a registered adapter and are normalized into a single
+          model, so one interface covers every agent you run:
+        </p>
+        <ul>
+          <li>OpenClaw — <code>~/.openclaw/agents</code></li>
+          <li>Codex — <code>~/.codex/sessions</code></li>
+          <li>Claude Code — <code>~/.claude/projects</code></li>
+          <li>OMP (oh-my-pi) — <code>~/.omp/agent/sessions</code></li>
+          <li>DeepSeek Harness — <code>~/.dsh/sessions</code></li>
+          <li>Gemini CLI — <code>~/.gemini/tmp</code></li>
+          <li>Hermes — <code>~/.hermes/state.db</code></li>
+        </ul>
+        <p>
+          Six of the seven store JSONL; Hermes stores SQLite. The authoritative list is the
+          <code>PLATFORMS</code> registry in <code>lib/platforms/index.js</code>, and adding a format
+          takes one adapter file plus one line in that table.
+        </p>
+        <h3>The per-turn ledger</h3>
+        <p>
+          Each session is replayed as a turn-by-turn transcript. Tool calls are paired with the
+          results they returned, so any call expands to show its arguments and its output. Token
+          usage and cost are summed per user turn, and a turn's elapsed time is split into model
+          inference versus tool execution — so a slow turn tells you whether the model was thinking
+          or a tool was blocking. Around that sit aggregate analytics over tool calls, error clusters
+          and token spend, the real human prompts recovered from the logs (including ones from
+          sessions an agent's own cleanup has already deleted), full-text search across every
+          platform at once, and a prompt library that installs the keepers as native slash commands.
+        </p>
+        <h3>Install</h3>
+        <p>Run it from npm without installing anything, then open the port it prints:</p>
+        <pre><code>npx @alloevil/agent-xray
+# then open http://localhost:3800</code></pre>
+        <p>
+          Requires Node.js 22.13 or newer. MIT licensed. This GitHub Pages page is a demo build
+          running against synthetic sample logs committed in the repository — it contains no real
+          sessions, so treat it as a UI tour. Run the command above to point it at your own.
+        </p>
+        <footer>
+          <a href="https://github.com/alloevil/AgentXRay">Source on GitHub</a>
+          <a href="https://www.npmjs.com/package/@alloevil/agent-xray">npm: @alloevil/agent-xray</a>
+          <a href="https://alloevil.github.io/projects/">More projects by allo</a>
+        </footer>
+      </div>
+    </section>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
